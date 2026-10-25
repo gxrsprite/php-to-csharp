@@ -15,7 +15,7 @@ then choose the .NET implementation.
   verification (raw → portable → modern hashes), HMAC cookie + server-side token table,
   plain-query + pretty-permalink dual routing.
 
-## WordPress migration & compatibility
+## Part 1: WordPress migration (Type B)
 
 A full WordPress → C# migration was completed with this skill. Compatibility points:
 
@@ -48,6 +48,70 @@ A full WordPress → C# migration was completed with this skill. Compatibility p
   (full head tags, JSON-LD graph, breadcrumbs, 301/302/307/410/451 redirections,
   admin SEO pages) — see [plugin-system](references/plugin-system.md) and
   [frontend-parity §6](references/frontend-parity.md).
+
+- **Plugins**: Rank Math SEO ported by "frontend contract + storage keys"
+  (full head tags, JSON-LD graph, breadcrumbs, 301/302/307/410/451 redirections,
+  admin SEO pages) — see [plugin-system](references/plugin-system.md) and
+  [frontend-parity §6](references/frontend-parity.md).
+
+---
+
+## Part 2: Xiuno forum migration (Type A)
+
+A full Xiuno BBS 4.0 → C# migration was completed with this skill:
+
+- **Passwords**: frontend pre-hashes with `md5(plaintext)` before POST; backend only does
+  `md5(hex+salt)` (the install script's double hash is the same formula — it receives plaintext).
+  Default admin `admin / 1` logs in against the legacy DB as-is.
+- **Sessions**: session uid + `bbs_token` dual track; token plaintext
+  `"$ip\t$time\t$uid\tmd5(password)"` via XXTEA (little-endian + int32 semantics) +
+  base64 + custom urlencode, key `md5(auth_key)`, password re-check past 30 min;
+  separate `bbs_admin_token` for admin (`"$ip\t$time"`, key `md5(md5(useragent)+auth_key)`,
+  3600 s expiry with 1800 s sliding refresh).
+- **Routing**: dual `?thread-1.htm` / `thread-create-1.htm` plus admin `?forum-list.htm`,
+  all rewritten to the same controllers; middleware runs before `UseRouting`;
+  exact-path branches must defer to legacy-shape parsing
+  (`/admin/` swallowing the query string caused a login-page self-redirect loop).
+- **Data**: all 17 tables/columns match install SQL verbatim (case-sensitive comparison;
+  ORM PascalCase defaults are the #1 trap); charset superset `utf8mb4`;
+  `thread_create/post_delete/user_delete` cascading counts ported per function.
+- **Frontend**: assets copied verbatim, templates ported to Razor (data tags only),
+  form field names and JS untouched, ajax `{code,message}` protocol preserved;
+  form JS must be emitted via sections (inline scripts run before jQuery and die silently,
+  leaving a native submit that prints raw JSON); quick-reply `return_html` renders
+  the `<li>` server-side so the original JS stays byte-identical.
+- **Coverage**: 13 frontend page types, mod top/move/delete/close, attach upload/delete/download,
+  9 admin modules (login/home/forums/groups/users/thread search/settings/SMTP/cache/plugins).
+
+### How plugins stay compatible (the key part of this case)
+
+PHP plugins are just three things, each with a fixed migration path — no automatic conversion exists:
+
+| PHP side | C# side | Cost |
+|---|---|---|
+| `conf.json` manifest | Folder-plugin `plugin.json` (same fields) / code-plugin interface props | Copy |
+| `hook/*.htm` pure HTML | Verbatim into `hook/`, same slot names, one `@Html.PluginSlot("point")` per view | **Zero — reuse as-is** (`my_hello` example) |
+| Static files | Synced at startup to `wwwroot/plugins/<dir>/`, served at `/plugins/<dir>/...` | Copy (`xn_scroll_top` example, JS reused verbatim) |
+| `hook/*.php` | Rewritten per slot semantics: template slots → fragments/Razor, logic slots → service methods/controller actions | Manual, one by one |
+| Pure-SQL `install.php` | `install.sql`, one-click execution from admin; logic parts → `InstallAsync` | Low |
+| `route/*.php` | Controller actions or Minimal API `MapEndpoints` | Medium |
+| `setting.php + setting.htm` | Plugin-owned settings page (e.g. `/plugin/<dir>/setting`, kv storage, keys kept verbatim) | Medium (`xn_insert_code` example: 7 keys, 7 slots, isomorphic port) |
+| `model/*.php` | Service methods (cascading counts included) | Medium |
+| `overwrite/` full-file replacement | **No equivalent** — rewritten case by case, recorded as known diffs | High |
+
+Supporting kit (`src/XiunoBBS.Sdk` package + unified admin page):
+
+- `IXiunoPlugin`: `Dir/Name/Brief/Version` + `ConfigureServices / MapEndpoints /`
+  `RenderSlot / InstallAsync / UninstallAsync / SettingUrl` (latter four have defaults).
+- `CodePluginHost`: reflection discovery + explicit preload of `Xiuno.Plugin.*.dll`
+  (assemblies are lazy-loaded — undiscovered if not preloaded).
+- `PluginStateService`: code-plugin enable/disable + settings in `bbs_kv`.
+- Admin plugins page: unified folder/code list with enable/disable/install/settings.
+- Slot names reuse the original hook names (`body_start`, `footer_end`,
+  `index_main_start`, `thread_user_after`, ...).
+- Same trust model as PHP: only admins can install/enable plugins; fragments render raw.
+
+---
 
 ## Done criteria (Xiuno + WordPress cases)
 
