@@ -1,0 +1,4 @@
+interface:
+  display_name: "PHP 传统 Web 应用转 C# 迁移"
+  short_description: "保留 PHP 老站 URL、密码/token 兼容、数据与前端样式，落到 ASP.NET Core + FreeSql"
+  default_prompt: "使用 $php-to-csharp 梳理并实现这项 PHP 到 C# 迁移，优先保留原站行为契约与前端一致。"
