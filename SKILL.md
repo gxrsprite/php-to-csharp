@@ -10,6 +10,8 @@ description: "Migrate legacy PHP web apps (query-string routing, MySQL, cookie/s
 **先识别机制类型再选模板**：A类是前端预哈希（`md5(明文)` 再 POST，后端 `md5(hex+salt)`）、对称加密 token、`.htm` 双模式路由；
 B类是 **WordPress 迁移经验**：明文 POST、多轨密码校验（裸哈希→可移植哈希→现代哈希逐级兼容）、HMAC cookie + 服务端 token 表、朴素 query + 美化路由双模式。不要把一套模板硬套到另一类站。
 
+C类是 **Discuz! + UCenter**：明文 POST，UC 校验密码，论坛会员表另存 cookie 凭据；authcode + saltkey + 路径派生 cookie 前缀。涉及 Discuz! X3.5/X5 时先读 [Discuz 迁移经验](references/discuz-migration.md)，尤其注意 UID、帖子联合主键、CSS 分块、后台会话和 PHP 序列化设置。版块删除/合并需核对分表、关联清理及本地文件失败恢复。本分支验证首批论坛、后台详细版块设置与复制/合并/删除，仍不能据此认定整站已迁移。
+
 ## 工作流程
 
 先固定参考源码目录并只读保留；确认 .NET SDK、FreeSql.Provider 与数据库驱动版本可还原。
@@ -20,6 +22,8 @@ B类是 **WordPress 迁移经验**：明文 POST、多轨密码校验（裸哈�
 4. **双模式路由兼容**：重写与查询串两种旧 URL 都要能进同一控制器；中间件必须放在 `UseRouting` 之前，**且必须放行 MVC 控制器首段与静态资源**（否则 `/Compat` 会被当成内容 slug 改写而 404，WordPress 迁移经验）。
 5. **前端 1:1 还原**：静态资源原样搬运、模板逐页转 Razor（只换数据标签不动结构样式）、表单字段名与 JS 行为保持一致（A类是前端预哈希，B类是明文 POST，两者不要混）。
 6. **端到端收尾**：老账号登录 + 注册 + 发帖 + 回帖 + 计数回查；区分“已验证等价”“已知差异”“未覆盖”。
+
+字节兼容算法除自身往返外，还应以固定时钟/随机输入调用原 PHP 函数生成向量；账号与 cookie 流程尽量做 PHP→C#、C#→PHP 双向验证。自检全绿只说明已覆盖断言通过，不代表未迁移业务兼容。
 
 ## 核心提醒
 
